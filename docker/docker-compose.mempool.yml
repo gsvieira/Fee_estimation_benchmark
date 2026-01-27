@@ -1,0 +1,67 @@
+services:
+  web:
+    environment:
+      FRONTEND_HTTP_PORT: "8080"
+      BACKEND_MAINNET_HTTP_HOST: "api"
+    image: mempool/frontend:latest
+    user: "1000:1000"
+    restart: on-failure
+    stop_grace_period: 1m
+    command: "./wait-for db:3306 --timeout=720 -- nginx -g 'daemon off;'"
+    ports:
+      - 4080:8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/ | grep -q '<html' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+  api:
+    environment:
+      MEMPOOL_BACKEND: "core"
+      CORE_RPC_HOST: "host.docker.internal"
+      CORE_RPC_PORT: "8332"
+      CORE_RPC_USERNAME: "mempool"
+      CORE_RPC_PASSWORD: "mempool"
+      DATABASE_ENABLED: "true"
+      DATABASE_HOST: "db"
+      DATABASE_DATABASE: "mempool"
+      DATABASE_USERNAME: "mempool"
+      DATABASE_PASSWORD: "mempool"
+      STATISTICS_ENABLED: "true"
+      FIAT_PRICE_API_ENABLED: "false"
+      EXCHANGE_RATE_UPDATE_INTERVAL: "0"
+    extra_hosts:
+    - "host.docker.internal:host-gateway"
+    image: mempool/backend:latest
+    user: "1000:1000"
+    restart: on-failure
+    stop_grace_period: 1m
+    command: "./wait-for-it.sh db:3306 --timeout=720 --strict -- ./start.sh"
+    volumes:
+      - ./data:/backend/cache
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8999/api/v1/backend-info || exit 1"]
+      interval: 60s
+      timeout: 30s
+      retries: 10
+      start_period: 5m
+  db:
+    environment:
+      MYSQL_DATABASE: "mempool"
+      MYSQL_USER: "mempool"
+      MYSQL_PASSWORD: "mempool"
+      MYSQL_ROOT_PASSWORD: "admin"
+      MARIADB_AUTO_UPGRADE: "1"
+    image: mariadb:10.5.21
+    restart: on-failure
+    stop_grace_period: 1m
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "mempool", "-pmempool"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  mariadb_data:
